@@ -439,5 +439,4 @@ dependencies = [
  "serde",
  "sha",
  "tinyvec",
- "unsigned-varint",
 ]

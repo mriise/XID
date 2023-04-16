@@ -1,5 +1,9 @@
 // NOTE this is highly opinionated
 
+// TL;DR
+// Information ('context') about the block and the ID including structure, length, interpitation, and/or other metadata is serialzied into dag-cbor then hashed with blake3.
+// The resulting hashes is used as the describing identifier for meta information about the ID and the block it is representing.
+
 // Short context hash is trucated bytes from the long context hash, such that there can be an easy corrilation between the two (assuming any collisions in the short context is resolveable). 
 
 // This intentionally does not use multihash and multicodec as prefixes to the context hashes. Reasons as follows:
@@ -20,7 +24,6 @@ use std::{fmt::{LowerHex, Debug}, hash::Hasher};
 
 use libipld_cbor::DagCborCodec;
 use libipld_core::{codec::Encode, };
-use sha::utils::DigestExt;
 use tinyvec::ArrayVec;
 
 // not secure at all, only accept already known or very trusted contexts, not safe for fetching context from network or from untrusted sources. Not sutible for contexts with lots of potential params.
@@ -150,35 +153,46 @@ impl Xid for XidShort {
 }
 
 
-#[test]
-fn foo() {
-    let id_ctx = libipld_macro::ipld!({
-        "name": "foo",
-        "length": 1,
-    });
+#[cfg(test)]
+mod test {
+    use super::*;
+    use sha::utils::DigestExt;
 
-    let b_ctx = libipld_macro::ipld!({
-        "codec": "dag-cbor",
-    });
-
-
-    let a = XidShort::new(id_ctx, b_ctx, &[0xff]).unwrap();
-    println!("{:?}\n{:x}\n{}-{}-{}", a, a, hex::encode(a.block_context_hash()), hex::encode(a.id_context_hash()), hex::encode(a.id_data()))
-}
-
-#[test]
-fn sha() {
-    let id_ctx = libipld_macro::ipld!({
-        "name": "sha",
-        "length": 32,
-    });
-
-    let b_ctx = libipld_macro::ipld!({
-        "codec": "dag-cbor",
-    });
+    #[test]
+    fn foo() {
+        let id_ctx = libipld_macro::ipld!({
+            "name": "foo",
+            "length": 1,
+        });
     
-    let mut hasher = sha::sha256::Sha256::default();
-    hasher.write(&[0xb0, 0xba]);
-    let a = XidShort::new(id_ctx, b_ctx, &hasher.to_bytes()).unwrap();
-    println!("{:?}\n{:x}", a, a)
+        let b_ctx = libipld_macro::ipld!({
+            "codec": "dag-cbor",
+        });
+    
+    
+        let a = XidShort::new(id_ctx, b_ctx, &[0xff]).unwrap();
+        println!("{:?}", a);
+        // hex multibase encoded
+        println!("{:x}", a);
+        // broken up for a bit better visualization
+        println!("{}-{}-{}", hex::encode(a.block_context_hash()), hex::encode(a.id_context_hash()), hex::encode(a.id_data()));
+    }
+    
+    #[test]
+    fn sha() {
+        let id_ctx = libipld_macro::ipld!({
+            "name": "sha",
+            "length": 32,
+        });
+    
+        let b_ctx = libipld_macro::ipld!({
+            "codec": "dag-cbor",
+        });
+        
+        let mut hasher = sha::sha256::Sha256::default();
+        hasher.write(&[0xb0, 0xba]);
+        let a = XidShort::new(id_ctx, b_ctx, &hasher.to_bytes()).unwrap();
+        println!("{:?}\n{:x}", a, a)
+    }
 }
+
