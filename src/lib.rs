@@ -4,11 +4,13 @@
 // Information ('context') about the block and the ID including structure, length, interpitation, and/or other metadata is serialzied into dag-cbor then hashed with blake3.
 // The resulting hashes is used as the describing identifier for meta information about the ID and the block it is representing.
 
-// Short context hash is trucated bytes from the long context hash, such that there can be an easy corrilation between the two (assuming any collisions in the short context is resolveable). 
+// Short context hash is trucated bytes from the long context hash, such that there can be an easy corrilation between the two. 
+
+// The ID context is intended to be used for block validation, any other information should be put into the block context
 
 // This intentionally does not use multihash and multicodec as prefixes to the context hashes. Reasons as follows:
-// - this is already a long ID, adding 2-3 more bytes (depending on hash fn and length) is a bit much
-// - the goal is to have the context hashes be constant size (and simple), allowing for faster and easier implementations
+// - this is already a long ID, adding 2-3 more bytes (depending on hash function and length) is a bit much
+// - the goal is to have the context hashes be constant size (and simple), allowing for faster and easier implementations (especially in the most minimal case)
 // Future changes in hash function or parameter encoding should be a seperate entry on the multicodec table. The motivation for using blake3 is for its cryptographic security and that it outputs the same hash despite different output lenghts as opposed to blake2 and sha3. 
 // In my opinion, it is slightly less confusing to say 4 or 32 bytes of blake3 instead of blake2b-256 truncated to 8 bytes or sha512 truncated to 32 bytes etc. This is especially important for the block context, as one can simply truncate the block context hash to produce the smaller XID
 
@@ -26,24 +28,29 @@ use libipld_cbor::DagCborCodec;
 use libipld_core::{codec::Encode, };
 use tinyvec::ArrayVec;
 
-// not secure at all, only accept already known or very trusted contexts, not safe for fetching context from network or from untrusted sources. Not sutible for contexts with lots of potential params.
-// it is expected that a sparce table is shipped with commonly known context IDs (trucated hashes), and if needed- will query from trusted sources in order to understand how to interpit the data
-// NOTE if a collision is found in the short codec table, there should be a salt added to the the less senior context hash until a collision is not reached. How such salt is added should be dependant on the trusted implementation/source.
+// not secure at all, for use if context is already known or from very trusted contexts. This ID should not be used to fetch context from network or anywhere not fully trusted. 
+// Not sutible for contexts with lots of potential params, as such complex meta information should be refered to by a long context hash.
+// it is expected that a sparce table is shipped with commonly known context IDs (trucated hashes), and if needed- will query from trusted sources in order to understand how to work with the block and ID data. 
+// NOTE if a collision is found in the short codec table, there should be a salt added to the the less senior context hash until a collision is not reached. (TODO) How such salt is added should be dependant on the trusted implementation/source.
 type ShortContextHash = [u8; 4];
-// suitable to be used for data with large and widely varying contexts and for data in potentially untrusted contexts
+// suitable to be used for data with large and widely varying contexts and for data in potentially untrusted contexts. 
 type LongContextHash = [u8; 32];
+
+// Short hashes are used for id contexts of long and short XIDs ATM, the idea being that the number of ID context variants would be in the thousands- thus not needing extra bytes to prevent collisions. 
+// The most common application primarily uses only a few methods of block validation anyways, and ones ones that could dynamically load in new block validation methods would want to do so from a trusted sorce anyways. 
+// Long XIDs could use 8 bytes instead of 4 for id contexts, but there should be some research into why/if it is worth the extra length. 
 
 #[derive(Debug)]
 enum XidError {
     InternalError,
 }
 
-// multicodec 0x0a
+// (hopefully) multicodec 0x0a
 #[derive(Clone, Copy)]
 pub struct XidShort {
     block_context: ShortContextHash,
     /// 4 bytes of blake3 hash 
-    id_context: [u8; 4],
+    id_context: ShortContextHash,
     // Data MUST be less than or equal to 64 bytes 
     // some reasons:
     // - this nudges users away from inlining data into the XID (that should be done with the long version if needed)
@@ -52,14 +59,14 @@ pub struct XidShort {
     data: tinyvec::ArrayVec<[u8; 64]>,
 }
 
-// multicodec 0x0b
+// (hopefully) multicodec 0x0b
 #[derive(Clone, Copy)]
 pub struct XidLong {
     // I feel it is a reasonable assumption that the id context should remain 4 bytes, not only for space, but for forcing users to consider carefully about their variants of identification
     // block context however should be a full 32 bytes, since there can be a whole subtree of information about the block that needs to be looked up.
     block_context: LongContextHash,
     /// 4 bytes of blake3 hash 
-    id_context: [u8; 4],
+    id_context: ShortContextHash,
     // TODO set limits on data length, at least 2kB, maybe 512. Data can be inlined into the ID, but ideally we want to avoid alloc
     data: tinyvec::ArrayVec<[u8; 512]>,
 }
