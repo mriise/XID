@@ -36,6 +36,8 @@ type ShortContextHash = [u8; 4];
 // suitable to be used for data with large and widely varying contexts and for data in potentially untrusted contexts. 
 type LongContextHash = [u8; 32];
 
+// block context could potentially include metadata about the tree structure underneath it (especially if the block it refers to is just links)
+
 // Short hashes are used for id contexts of long and short XIDs ATM, the idea being that the number of ID context variants would be in the thousands- thus not needing extra bytes to prevent collisions. 
 // The most common application primarily uses only a few methods of block validation anyways, and ones ones that could dynamically load in new block validation methods would want to do so from a trusted sorce anyways. 
 // Long XIDs could use 8 bytes instead of 4 for id contexts, but there should be some research into why/if it is worth the extra length. 
@@ -46,7 +48,7 @@ enum XidError {
 }
 
 // (hopefully) multicodec 0x0a
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct XidShort {
     block_context: ShortContextHash,
     /// 4 bytes of blake3 hash 
@@ -187,9 +189,14 @@ mod test {
     
     #[test]
     fn sha() {
+        let id_ctx2 = libipld_macro::ipld!({
+            "name": "sha",
+            "length": 32u32,
+        });
+
         let id_ctx = libipld_macro::ipld!({
             "name": "sha",
-            "length": 32,
+            "length": 32u64,
         });
     
         let b_ctx = libipld_macro::ipld!({
@@ -198,8 +205,26 @@ mod test {
         
         let mut hasher = sha::sha256::Sha256::default();
         hasher.write(&[0xb0, 0xba]);
-        let a = XidShort::new(id_ctx, b_ctx, &hasher.to_bytes()).unwrap();
-        println!("{:?}\n{:x}", a, a)
+        let a = XidShort::new(id_ctx, b_ctx.clone(), &hasher.to_bytes()).unwrap();
+        let b = XidShort::new(id_ctx2, b_ctx, &hasher.to_bytes()).unwrap();
+        println!("{:?}\n{:x}", a, a);
+        dbg!(a == b);
+    }
+
+    #[test]
+    fn context_hash() {
+
+        let ctx = libipld_macro::ipld!({
+            "codec": "dag-json",
+        });
+        let mut v = Vec::new();
+        ctx.encode(DagCborCodec, &mut v).map_err(|_| XidError::InternalError).unwrap();
+
+        let mut v_o = [0u8; 4];
+        let mut hasher = blake3::Hasher::default();
+        hasher.update(&v).finalize_xof().fill(&mut v_o);
+
+        println!("{}", hex::encode(v_o))
     }
 }
 
